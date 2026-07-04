@@ -1,0 +1,16 @@
+{
+  "items": [
+    {"pub_code": "w",   "issue": "19800101", "label": "Watchtower 1980-01-01"},
+    {"pub_code": "w",   "issue": "20240100", "label": "Watchtower 2024-01"},
+    {"pub_code": "w",   "issue": "20260400", "label": "Watchtower 2026-04"},
+    {"pub_code": "km",  "issue": "19750100", "label": "Kingdom Ministry 1975-01"},
+    {"pub_code": "km",  "issue": "20150600", "label": "Kingdom Ministry 2015-06"},
+    {"pub_code": "mwb", "issue": "20240100", "label": "Meeting Workbook 2024-01"},
+    {"pub_code": "g",   "issue": "20100700", "label": "Awake! 2010-07"},
+    {"pub_code": "bh",  "issue": null, "label": "Bible Teach book"},
+    {"pub_code": "nwt", "issue": null, "label": "New World Translation"},
+    {"pub_code": "sjj", "issue": null, "label": "Sing Out Joyfully songbook"},
+    {"pub_code": "tr",  "issue": null, "label": "Truth That Leads to Eternal Life (1968)"},
+    {"pub_code": "by",  "issue": null, "label": "Byington Bible"}
+  ]
+}

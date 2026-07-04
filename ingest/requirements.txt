@@ -1,0 +1,10 @@
+requests==2.32.3
+psycopg2-binary==2.9.9
+pgvector==0.3.2
+cryptography==43.0.0
+python-dotenv==1.0.1
+networkx==3.3
+# Optional: python-igraph + leidenalg give better community detection.
+# If unavailable, falls back to networkx Louvain or connected components.
+python-igraph==0.11.6
+leidenalg==0.10.2

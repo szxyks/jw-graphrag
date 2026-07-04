@@ -1,0 +1,142 @@
+version: "3.9"
+
+# ===========================================================================
+# JW RAG System — Docker Compose
+# ===========================================================================
+# Services:
+#   - postgres  : Postgres 16 + pgvector for chunk storage + embeddings
+#   - ollama    : Local LLM server (llama3.2 + nomic-embed-text)
+#   - ingest    : Python service that downloads + decrypts + embeds JWPUBs
+#   - backend   : Flask API (chat, search, ingest triggers)
+#   - frontend  : Nginx serving Tailwind UI + proxying /api to backend
+# ===========================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: jw-rag-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jwrag
+      POSTGRES_USER: jwrag
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jwrag_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./scripts/init_db.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jwrag -d jwrag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: jw-rag-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ./data/ollama:/root/.ollama
+    # If you have an NVIDIA GPU, uncomment these lines:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: jw-rag-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling LLM model (llama3.2:3b — ~2GB, first run takes a few minutes)..."
+        OLLAMA_HOST=http://ollama:11434 ollama pull llama3.2:3b
+        echo "Pulling embedding model (nomic-embed-text — 274MB)..."
+        OLLAMA_HOST=http://ollama:11434 ollama pull nomic-embed-text
+        echo "Models ready."
+        # Optionally pull a larger chat model if specified
+        if [ -n "$${EXTRA_LLM_MODEL}" ]; then
+          echo "Pulling extra model: $$EXTRA_LLM_MODEL ..."
+          OLLAMA_HOST=http://ollama:11434 ollama pull "$$EXTRA_LLM_MODEL"
+        fi
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jw-rag-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://jwrag:${POSTGRES_PASSWORD:-jwrag_dev}@postgres:5432/jwrag
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-llama3.2:3b}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      FLASK_ENV: production
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+    volumes:
+      - ./backend:/app
+      - ./scripts:/scripts:ro
+      - ./data/downloads:/data/downloads
+    command: python app.py
+
+  ingest:
+    build:
+      context: ./ingest
+      dockerfile: Dockerfile
+    container_name: jw-rag-ingest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://jwrag:${POSTGRES_PASSWORD:-jwrag_dev}@postgres:5432/jwrag
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./ingest:/app
+      - ./scripts:/scripts:ro
+      - ./data/downloads:/data/downloads
+      - ./data/extracted:/data/extracted
+    profiles: ["ingest"]  # Only runs when invoked explicitly
+
+  frontend:
+    image: nginx:alpine
+    container_name: jw-rag-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
