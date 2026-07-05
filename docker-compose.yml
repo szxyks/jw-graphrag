@@ -162,8 +162,7 @@ services:
       - "${FRONTEND_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
-      - ./nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
-    environment:
-      BACKEND_HOST: ${BACKEND_HOST:-backend}
+      # Mount directly as a .conf file (no envsubst needed — hostname is hardcoded)
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
