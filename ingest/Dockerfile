@@ -9,10 +9,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
-COPY requirements.txt .
+# Copy requirements first (cache layer)
+COPY ingest/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip list | grep -iE "psycopg|pgvector|cryptography|requests|networkx|igraph|leidenalg"
 
-COPY . .
+# Copy ingest code
+COPY ingest/ /app/
+
+# Also bake in the shared scripts (jwpub_decryptor, graphrag) so the ingest
+# container doesn't depend on the host's ./scripts directory being mounted.
+COPY scripts/jwpub_decryptor.py /scripts/jwpub_decryptor.py
+COPY scripts/graphrag.py /scripts/graphrag.py
+COPY scripts/init_db.sql /scripts/init_db.sql
+
+# Make /scripts importable
+ENV PYTHONPATH=/scripts:/app:$PYTHONPATH
 
 CMD ["python", "ingest.py", "--help"]

@@ -23,12 +23,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Python deps (this layer is cached unless requirements.txt changes)
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip list | grep -iE "flask|psycopg|pgvector|cryptography|requests"
 
-# Copy app source (mounted over at runtime for dev, but bake it in for prod)
-COPY . .
+# Copy backend source
+COPY backend/ /app/
+
+# Bake in the shared scripts (graphrag) so the backend doesn't depend on
+# the host's ./scripts directory being mounted.
+COPY scripts/graphrag.py /scripts/graphrag.py
+COPY scripts/jwpub_decryptor.py /scripts/jwpub_decryptor.py
+
+# Make /scripts importable
+ENV PYTHONPATH=/scripts:/app:$PYTHONPATH
 
 EXPOSE 5000
 

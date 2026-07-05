@@ -1,0 +1,14 @@
+data/
+.git/
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+*.log
+data/postgres/
+data/ollama/
+data/downloads/
+data/extracted/
