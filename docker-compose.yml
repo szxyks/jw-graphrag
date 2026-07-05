@@ -153,14 +153,16 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    # Use `links` to ensure the frontend can resolve the backend hostname
+    # even if Docker DNS has issues on this host.
+    links:
+      - backend:backend
     ports:
       - "${FRONTEND_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
-      # Mount as a .template file — nginx:alpine's entrypoint runs envsubst automatically
       - ./nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
     environment:
-      # Backend host for nginx proxy_pass.
-      # Default "backend" works when backend uses bridge networking (default).
-      # If BACKEND_NETWORK_MODE=host, set BACKEND_HOST=host.docker.internal instead.
       BACKEND_HOST: ${BACKEND_HOST:-backend}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
