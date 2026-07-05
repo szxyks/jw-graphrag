@@ -157,4 +157,10 @@ services:
       - "${FRONTEND_PORT:-8080}:80"
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount as a .template file — nginx:alpine's entrypoint runs envsubst automatically
+      - ./nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
+    environment:
+      # Backend host for nginx proxy_pass.
+      # Default "backend" works when backend uses bridge networking (default).
+      # If BACKEND_NETWORK_MODE=host, set BACKEND_HOST=host.docker.internal instead.
+      BACKEND_HOST: ${BACKEND_HOST:-backend}
