@@ -65,30 +65,40 @@ This is the [Microsoft GraphRAG pattern](https://microsoft.github.io/graphrag/) 
 - Docker 24+ and Docker Compose v2
 - ~12 GB free disk (models + ingested corpus)
 - 8 GB+ RAM (16 GB recommended for GraphRAG ingestion)
+- **Ollama installed on your host** (recommended) — get it from https://ollama.com
+  - Or use the bundled Ollama (see "Bundled Ollama" section below)
 
-### 2. Configure & start
+### 2. Pull the required models (host Ollama)
+
+If you don't already have them:
+```bash
+ollama pull qwen2.5:latest        # or llama3.2:3b — your choice of LLM
+ollama pull nomic-embed-text      # required for embeddings
+```
+
+Verify with `ollama list`.
+
+### 3. Configure & start
 
 ```bash
 cd jw-graphrag
 cp .env.example .env
+# Edit .env to match the models you have pulled (LLM + embed model)
+
 docker compose up -d
-docker compose logs -f ollama-init   # wait for "Models ready" (~2-5 min)
-```
-
-First start pulls two Ollama models:
-- `llama3.2:3b` (~2 GB) — chat + entity extraction
-- `nomic-embed-text` (~274 MB) — embeddings
-
-### 3. Verify
-
-```bash
-curl http://localhost:8080/api/health
-# {"ollama_ready": true, "llm_model": "llama3.2:3b", ...}
+docker compose logs -f backend   # verify "Ollama reachable"
 ```
 
 Open **http://localhost:8080**.
 
-### 4. Ingest your first publication
+### 4. Verify
+
+```bash
+curl http://localhost:8080/api/health
+# {"ollama_ready": true, "llm_model": "qwen2.5:latest", ...}
+```
+
+### 5. Ingest your first publication
 
 Use the UI quick-ingest buttons, or:
 
@@ -100,19 +110,19 @@ curl -X POST http://localhost:8080/api/ingest \
 
 This downloads the 1980-01 Watchtower, decrypts all 12 articles, chunks them into ~228 paragraphs, embeds them, AND extracts the entity graph (entities + relationships) for that issue.
 
-### 5. Ingest more, then build communities
+### 6. Ingest more, then build communities
 
 ```bash
 # Ingest several publications
-docker compose run --rm ingest python ingest.py --catalog /scripts/STARTER_CATALOG.json
+docker compose run --rm --profile ingest ingest python ingest.py --catalog /scripts/STARTER_CATALOG.json
 
 # After ingestion, run community detection on the global entity graph
-docker compose run --rm ingest python build_graph.py --communities
+docker compose run --rm --profile ingest ingest python build_graph.py --communities
 ```
 
 The community detection step clusters all entities (across all publications) into thematic groups and asks the LLM to summarize each cluster. This is what enables global-mode questions like "What are the major themes across all Watchtower issues from 1980?".
 
-### 6. Ask questions
+### 7. Ask questions
 
 In the UI, try:
 - "What does the Bible say about hope?" → vector + graph retrieval
@@ -120,6 +130,26 @@ In the UI, try:
 - "What are the major themes across the corpus?" → community summaries
 
 Switch between `local`, `global`, and `hybrid` modes via the API.
+
+---
+
+## Bundled Ollama (alternative to host Ollama)
+
+If you don't want to install Ollama on your host, the stack can run its own:
+
+```bash
+# Edit .env first:
+#   OLLAMA_HOST=http://ollama:11434
+#   OLLAMA_LLM_MODEL=llama3.2:3b
+#   OLLAMA_EMBED_MODEL=nomic-embed-text
+
+docker compose up -d --profile bundled-ollama
+docker compose logs -f ollama-init   # ~5 min for first model pull
+```
+
+The `bundled-ollama` profile starts an Ollama container on port 11434 and an `ollama-init` job that pulls the required models.
+
+**Note:** If you see `bind host port 0.0.0.0:11434/tcp: address already in use`, you already have Ollama running on the host. Either stop it (`sudo systemctl stop ollama`) or use the default host-Ollama mode (no `--profile bundled-ollama`).
 
 ---
 

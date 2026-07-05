@@ -196,15 +196,22 @@ def root():
 
 
 if __name__ == "__main__":
-    # Wait for Ollama to be ready before starting
-    print("Waiting for Ollama...")
-    for _ in range(60):
-        if ollama_client.is_ready():
-            print("Ollama ready.")
-            break
-        time.sleep(2)
+    # Don't block startup waiting for Ollama — just warn.
+    # The /health endpoint will report its status, and chat calls will fail
+    # with a clear message if Ollama isn't reachable.
+    print(f"Configured OLLAMA_HOST = {ollama_client.OLLAMA_HOST}")
+    print(f"Configured LLM model   = {ollama_client.DEFAULT_LLM}")
+    print(f"Configured embed model = {ollama_client.DEFAULT_EMBED}")
+    if ollama_client.is_ready():
+        print("✓ Ollama reachable. Models:", ollama_client.list_models()[:5])
     else:
-        print("WARNING: Ollama not ready after 2 minutes — starting anyway.")
+        print("⚠ Ollama not reachable at the configured host.")
+        print("  If you're using host Ollama, make sure it's running:")
+        print("    ollama serve   # or check `systemctl status ollama`")
+        print("  And make sure these models are pulled:")
+        print(f"    ollama pull {ollama_client.DEFAULT_LLM}")
+        print(f"    ollama pull {ollama_client.DEFAULT_EMBED}")
+        print("  Backend will still start — chat will return an error until Ollama is up.")
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, threaded=True, debug=False)

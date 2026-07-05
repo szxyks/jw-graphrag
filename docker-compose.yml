@@ -1,14 +1,14 @@
-version: "3.9"
-
 # ===========================================================================
-# JW RAG System — Docker Compose
+# JW GraphRAG — Docker Compose
 # ===========================================================================
 # Services:
-#   - postgres  : Postgres 16 + pgvector for chunk storage + embeddings
-#   - ollama    : Local LLM server (llama3.2 + nomic-embed-text)
-#   - ingest    : Python service that downloads + decrypts + embeds JWPUBs
-#   - backend   : Flask API (chat, search, ingest triggers)
+#   - postgres  : Postgres 16 + pgvector (chunk store + embeddings + graph)
+#   - ollama    : Local LLM server (OPTIONAL — profile "bundled-ollama")
+#                 If you already run Ollama on your host, skip this and use
+#                 OLLAMA_HOST=http://host.docker.internal:11434 instead.
+#   - backend   : Flask API (chat, search, ingest, graph endpoints)
 #   - frontend  : Nginx serving Tailwind UI + proxying /api to backend
+#   - ingest    : On-demand ingestion runner (invoked via `docker compose run`)
 # ===========================================================================
 
 services:
@@ -31,15 +31,20 @@ services:
       timeout: 3s
       retries: 10
 
+  # ===========================================================================
+  # Ollama — only started when you pass `--profile bundled-ollama`.
+  # Default behavior: connect to your host Ollama (set OLLAMA_HOST in .env).
+  # ===========================================================================
   ollama:
     image: ollama/ollama:latest
     container_name: jw-rag-ollama
     restart: unless-stopped
+    profiles: ["bundled-ollama"]
     ports:
       - "${OLLAMA_PORT:-11434}:11434"
     volumes:
       - ./data/ollama:/root/.ollama
-    # If you have an NVIDIA GPU, uncomment these lines:
+    # NVIDIA GPU (uncomment to enable):
     # deploy:
     #   resources:
     #     reservations:
@@ -54,9 +59,11 @@ services:
       retries: 5
       start_period: 30s
 
+  # Pulls the required models into the bundled Ollama (only used with profile)
   ollama-init:
     image: ollama/ollama:latest
     container_name: jw-rag-ollama-init
+    profiles: ["bundled-ollama"]
     depends_on:
       ollama:
         condition: service_healthy
@@ -65,16 +72,15 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        echo "Pulling LLM model (llama3.2:3b — ~2GB, first run takes a few minutes)..."
-        OLLAMA_HOST=http://ollama:11434 ollama pull llama3.2:3b
-        echo "Pulling embedding model (nomic-embed-text — 274MB)..."
-        OLLAMA_HOST=http://ollama:11434 ollama pull nomic-embed-text
-        echo "Models ready."
-        # Optionally pull a larger chat model if specified
+        echo "Pulling LLM model ($${OLLAMA_LLM_MODEL:-llama3.2:3b})..."
+        OLLAMA_HOST=http://ollama:11434 ollama pull "$${OLLAMA_LLM_MODEL:-llama3.2:3b}"
+        echo "Pulling embedding model ($${OLLAMA_EMBED_MODEL:-nomic-embed-text})..."
+        OLLAMA_HOST=http://ollama:11434 ollama pull "$${OLLAMA_EMBED_MODEL:-nomic-embed-text}"
         if [ -n "$${EXTRA_LLM_MODEL}" ]; then
           echo "Pulling extra model: $$EXTRA_LLM_MODEL ..."
           OLLAMA_HOST=http://ollama:11434 ollama pull "$$EXTRA_LLM_MODEL"
         fi
+        echo "Models ready."
     restart: "no"
 
   backend:
@@ -86,14 +92,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://jwrag:${POSTGRES_PASSWORD:-jwrag_dev}@postgres:5432/jwrag
-      OLLAMA_HOST: http://ollama:11434
-      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-llama3.2:3b}
+      # Default: use host Ollama (works on Docker Desktop / Linux with host-gateway)
+      # Override in .env to http://ollama:11434 if using the bundled-ollama profile.
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-qwen2.5:latest}
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
       FLASK_ENV: production
       PYTHONUNBUFFERED: "1"
@@ -103,6 +107,9 @@ services:
       - ./backend:/app
       - ./scripts:/scripts:ro
       - ./data/downloads:/data/downloads
+    # Linux only: enables host.docker.internal resolution
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     command: python app.py
 
   ingest:
@@ -113,13 +120,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://jwrag:${POSTGRES_PASSWORD:-jwrag_dev}@postgres:5432/jwrag
-      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-qwen2.5:latest}
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
       PYTHONUNBUFFERED: "1"
     volumes:
@@ -127,7 +131,9 @@ services:
       - ./scripts:/scripts:ro
       - ./data/downloads:/data/downloads
       - ./data/extracted:/data/extracted
-    profiles: ["ingest"]  # Only runs when invoked explicitly
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: ["ingest"]
 
   frontend:
     image: nginx:alpine
