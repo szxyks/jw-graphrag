@@ -130,11 +130,13 @@ services:
       context: ./ingest
       dockerfile: Dockerfile
     container_name: jw-rag-ingest
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # NOTE: no depends_on here. The ingest container is invoked via
+    # 'docker compose run --rm ingest ...' from the backend, and we don't
+    # want compose to recreate the postgres container (which is already
+    # running). The ingest container connects to postgres via the project
+    # network's Docker DNS.
     environment:
-      DATABASE_URL: postgresql://jwrag:${POSTGRES_PASSWORD:-jwrag_dev}@postgres:5432/jwrag
+      DATABASE_URL: ${DATABASE_URL:-postgresql://jwrag:${POSTGRES_PASSWORD:-jwrag_dev}@postgres:5432/jwrag}
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-qwen2.5:latest}
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}

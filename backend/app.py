@@ -166,7 +166,7 @@ def trigger_ingest():
     cmd = [
         "docker", "compose", "--project-name", "jw-graphrag",
         "-f", "/docker-compose.yml",
-        "run", "--rm", "ingest",
+        "run", "--rm", "--no-deps", "ingest",
         "python", "ingest.py", "--pub", pub_code,
     ]
     if issue:
@@ -206,7 +206,7 @@ def trigger_ingest_sync():
     cmd = [
         "docker", "compose", "--project-name", "jw-graphrag",
         "-f", "/docker-compose.yml",
-        "run", "--rm", "ingest",
+        "run", "--rm", "--no-deps", "ingest",
         "python", "ingest.py", "--pub", pub_code,
     ]
     if issue:
