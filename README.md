@@ -222,13 +222,13 @@ jw-graphrag/
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   ├── ingest.py           # JWPUB → decrypt → chunks → embed → DB
-│   ├── build_graph.py      # entity extraction + community detection
-│   └── graphrag.py         # LLM prompts for extraction + summarization
+│   └── build_graph.py      # entity extraction + community detection
 ├── nginx/
 │   └── nginx.conf
 └── scripts/
     ├── init_db.sql         # Schema: chunks + entities + relationships + communities
     ├── jwpub_decryptor.py  # AES-128-CBC + zlib decryptor
+    ├── graphrag.py         # LLM prompts for entity extraction + community summarization (shared)
     ├── epub_to_rag_chunks.py
     ├── ingest_one.py
     └── STARTER_CATALOG.json

@@ -9,8 +9,13 @@ Three retrieval modes:
   - "hybrid": combination of both (default)
 """
 import os
+import sys
 import json
 import psycopg2.extras
+
+# /scripts is mounted read-only in the backend container — graphrag.py lives there
+sys.path.insert(0, "/scripts")
+
 from db import query
 import ollama_client
 import graphrag
