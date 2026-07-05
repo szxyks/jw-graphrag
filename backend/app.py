@@ -57,20 +57,32 @@ def search_entities():
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify({"error": "missing 'q'"}), 400
-    return jsonify({"query": q, "entities": rag.search_entities(q, top_k=int(request.args.get("top_k", 10)))})
+    try:
+        return jsonify({"query": q, "entities": rag.search_entities(q, top_k=int(request.args.get("top_k", 10)))})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
 @app.route("/graph")
 def get_graph():
     """Get entities + relationships for visualization."""
-    entity_id = request.args.get("entity_id", type=int)
-    limit = request.args.get("limit", 50, type=int)
-    return jsonify(rag.get_entity_graph(entity_id=entity_id, limit=limit))
+    try:
+        entity_id = request.args.get("entity_id", type=int)
+        limit = request.args.get("limit", 50, type=int)
+        return jsonify(rag.get_entity_graph(entity_id=entity_id, limit=limit))
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
 @app.route("/communities")
 def list_communities():
-    return jsonify(rag.list_communities())
+    try:
+        return jsonify(rag.list_communities())
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
 
 @app.route("/sessions", methods=["GET", "POST"])
