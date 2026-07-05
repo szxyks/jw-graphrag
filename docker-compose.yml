@@ -93,21 +93,29 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://jwrag:${POSTGRES_PASSWORD:-jwrag_dev}@postgres:5432/jwrag
+      # Default: connect via Docker DNS to the postgres service
+      # In host network mode, set DATABASE_URL=postgresql://jwrag:...@127.0.0.1:5432/jwrag in .env
+      DATABASE_URL: ${DATABASE_URL:-postgresql://jwrag:${POSTGRES_PASSWORD:-jwrag_dev}@postgres:5432/jwrag}
       # Default: use host Ollama (works on Docker Desktop / Linux with host-gateway)
       # Override in .env to http://ollama:11434 if using the bundled-ollama profile.
+      # If using BACKEND_NETWORK_MODE=host, set this to http://127.0.0.1:11434
       OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
       OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-qwen2.5:latest}
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
       FLASK_ENV: production
       PYTHONUNBUFFERED: "1"
+    # Set BACKEND_NETWORK_MODE=host in .env to bypass Docker bridge networking
+    # entirely — useful when your firewall blocks Docker bridge → host traffic.
+    # When using host mode, also set OLLAMA_HOST=http://127.0.0.1:11434
+    # and DATABASE_URL=postgresql://jwrag:jwrag_dev@127.0.0.1:5432/jwrag
+    network_mode: ${BACKEND_NETWORK_MODE:-bridge}
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     volumes:
       - ./backend:/app
       - ./scripts:/scripts:ro
       - ./data/downloads:/data/downloads
-    # Linux only: enables host.docker.internal resolution
+    # Linux only: enables host.docker.internal resolution (ignored in host network mode)
     extra_hosts:
       - "host.docker.internal:host-gateway"
     command: python app.py
