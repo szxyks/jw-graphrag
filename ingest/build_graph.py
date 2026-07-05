@@ -61,6 +61,10 @@ def link_entity_chunk(conn, entity_id, chunk_id):
             ON CONFLICT (entity_id, chunk_id) DO UPDATE
                 SET mention_count = entity_chunks.mention_count + 1
         """, (entity_id, chunk_id))
+        # Also increment entities.chunk_count for display purposes
+        cur.execute("""
+            UPDATE entities SET chunk_count = chunk_count + 1 WHERE id = %s
+        """, (entity_id,))
 
 
 def update_chunk_summary(conn, chunk_id, summary):
