@@ -115,12 +115,11 @@ services:
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     volumes:
-      - ./backend:/app
       - ./scripts:/scripts:ro
       - ./data/downloads:/data/downloads
       # Mount the Docker socket so the backend can spawn one-shot ingest runs
-      # via `docker compose run --rm ingest python ingest.py ...`
       - /var/run/docker.sock:/var/run/docker.sock
+      # Mount docker-compose.yml so the backend can invoke `docker compose run`
       - ./docker-compose.yml:/docker-compose.yml:ro
     # Linux only: enables host.docker.internal resolution (ignored in host network mode)
     extra_hosts:
@@ -143,8 +142,11 @@ services:
       OLLAMA_LLM_MODEL: ${OLLAMA_LLM_MODEL:-qwen2.5:latest}
       OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-nomic-embed-text}
       PYTHONUNBUFFERED: "1"
+    # NOTE: we don't mount ./ingest:/app because the ingest container is
+    # spawned from INSIDE the backend container (via docker compose run),
+    # and the backend can't see the host's ./ingest directory. The ingest
+    # code is baked into the image at build time (see ingest/Dockerfile).
     volumes:
-      - ./ingest:/app
       - ./scripts:/scripts:ro
       - ./data/downloads:/data/downloads
       - ./data/extracted:/data/extracted
