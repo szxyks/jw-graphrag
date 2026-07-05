@@ -146,33 +146,83 @@ def chat():
 
 @app.route("/ingest", methods=["POST"])
 def trigger_ingest():
-    """Trigger an ingestion job (one-shot, synchronous for simplicity).
+    """Trigger an ingestion job by spawning a one-shot ingest container.
 
-    Request: {"pub_code": "w", "issue": "19800101", "format": "jwpub"}
+    Uses the Docker socket (mounted into the backend container) to run:
+        docker compose --project-name jw-graphrag run --rm ingest \
+            python ingest.py --pub <pub_code> [--issue <issue>]
+
+    Request: {"pub_code": "w", "issue": "19800101"}
+    Response: streamed JSON lines with status updates
     """
     body = request.get_json(silent=True) or {}
     pub_code = body.get("pub_code")
     issue = body.get("issue")
-    fmt = body.get("format", "jwpub")
     if not pub_code:
         return jsonify({"error": "missing 'pub_code'"}), 400
 
-    # Call ingest script via subprocess
-    import subprocess
-    cmd = ["python", "/scripts/ingest_one.py", pub_code]
+    import subprocess, shlex
+
+    cmd = [
+        "docker", "compose", "--project-name", "jw-graphrag",
+        "-f", "/docker-compose.yml",
+        "run", "--rm", "ingest",
+        "python", "ingest.py", "--pub", pub_code,
+    ]
     if issue:
-        cmd.append(issue)
-    cmd.extend(["--format", fmt])
+        cmd.extend(["--issue", issue])
+
+    def stream():
+        yield f"data: {json.dumps({'type':'start','command':' '.join(shlex.quote(c) for c in cmd),'pub_code':pub_code,'issue':issue})}\n\n"
+        try:
+            proc = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,
+            )
+            for line in proc.stdout:
+                # Strip trailing newline; emit as a log event
+                yield f"data: {json.dumps({'type':'log','line':line.rstrip()})}\n\n"
+            proc.wait()
+            ok = proc.returncode == 0
+            yield f"data: {json.dumps({'type':'done','ok':ok,'exit_code':proc.returncode})}\n\n"
+        except FileNotFoundError:
+            yield f"data: {json.dumps({'type':'error','error':'docker CLI not found in backend container'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type':'error','error':str(e)})}\n\n"
+
+    return Response(stream_with_context(stream()), mimetype="text/event-stream")
+
+
+@app.route("/ingest_sync", methods=["POST"])
+def trigger_ingest_sync():
+    """Synchronous version of /ingest (waits for completion). Useful for curl testing."""
+    body = request.get_json(silent=True) or {}
+    pub_code = body.get("pub_code")
+    issue = body.get("issue")
+    if not pub_code:
+        return jsonify({"error": "missing 'pub_code'"}), 400
+
+    import subprocess, shlex
+    cmd = [
+        "docker", "compose", "--project-name", "jw-graphrag",
+        "-f", "/docker-compose.yml",
+        "run", "--rm", "ingest",
+        "python", "ingest.py", "--pub", pub_code,
+    ]
+    if issue:
+        cmd.extend(["--issue", issue])
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         return jsonify({
             "ok": result.returncode == 0,
-            "stdout": result.stdout[-3000:],
-            "stderr": result.stderr[-3000:],
+            "stdout": result.stdout[-5000:],
+            "stderr": result.stderr[-5000:],
             "command": " ".join(cmd),
         })
     except subprocess.TimeoutExpired:
-        return jsonify({"ok": False, "error": "ingest timed out (10 min)"}), 504
+        return jsonify({"ok": False, "error": "ingest timed out (30 min)"}), 504
+    except FileNotFoundError:
+        return jsonify({"ok": False, "error": "docker CLI not installed in backend container — rebuild with: docker compose build backend"}), 500
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

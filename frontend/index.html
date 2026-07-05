@@ -1,18 +1,28 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JW RAG — Watchtower Library Research Assistant</title>
+<title>JW GraphRAG — Watchtower Library Research Assistant</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        jwblue: '#1a4d8c',
-        jwblueDark: '#0f3060',
-        jwgold: '#d4a843',
+        jwblue: '#3b82f6',
+        jwblueDark: '#1e40af',
+        jwgold: '#fbbf24',
+        ink: {
+          900: '#0f172a',
+          800: '#1e293b',
+          700: '#334155',
+          600: '#475569',
+          400: '#94a3b8',
+          200: '#cbd5e1',
+          100: '#e2e8f0',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
@@ -24,48 +34,56 @@ tailwind.config = {
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
+  html, body { background-color: #0f172a; color: #e2e8f0; }
   body { font-family: 'Inter', system-ui, sans-serif; }
   .chat-scroll::-webkit-scrollbar { width: 6px; }
-  .chat-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .chat-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
   .chat-scroll::-webkit-scrollbar-track { background: transparent; }
   .citation-chip {
     display: inline-block;
     padding: 1px 6px;
-    background: #dbeafe;
-    color: #1e40af;
+    background: #1e3a8a;
+    color: #bfdbfe;
+    border: 1px solid #3b82f6;
     border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
     margin: 0 1px;
   }
-  .citation-chip:hover { background: #bfdbfe; }
+  .citation-chip:hover { background: #1e40af; }
   .streaming-cursor::after {
     content: '▋';
     animation: blink 1s step-start infinite;
-    color: #1a4d8c;
+    color: #60a5fa;
   }
   @keyframes blink { 50% { opacity: 0; } }
+  /* Light mode overrides — toggled by removing `dark` class on <html> */
+  html:not(.dark) body { background-color: #f8fafc; color: #1e293b; }
+  html:not(.dark) .panel-dark { background-color: #ffffff !important; border-color: #e2e8f0 !important; }
+  html:not(.dark) .border-dark-line { border-color: #e2e8f0 !important; }
+  html:not(.dark) .text-dark-faint { color: #64748b !important; }
 </style>
 </head>
-<body class="bg-slate-50 text-slate-800 h-screen flex flex-col">
+<body class="bg-ink-900 text-ink-100 h-screen flex flex-col">
 
 <!-- Header -->
-<header class="bg-jwblue text-white shadow-md flex-none">
+<header class="bg-ink-800 border-b border-ink-700 shadow-md flex-none">
   <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 bg-jwgold rounded flex items-center justify-center font-bold text-jwblueDark">JW</div>
+      <div class="w-9 h-9 bg-jwgold rounded flex items-center justify-center font-bold text-ink-900">JW</div>
       <div>
-        <h1 class="text-lg font-semibold leading-tight">Watchtower Library RAG</h1>
-        <p class="text-xs text-blue-200">Local LLM • Ollama + pgvector • 1950–2026 archive</p>
+        <h1 class="text-lg font-semibold leading-tight">Watchtower Library GraphRAG</h1>
+        <p class="text-xs text-ink-400">Local LLM • Ollama + pgvector + Knowledge Graph • 1950–2026 archive</p>
       </div>
     </div>
-    <div class="flex items-center gap-4 text-sm">
+    <div class="flex items-center gap-3 text-sm">
       <div id="ollama-status" class="flex items-center gap-2">
         <div class="w-2 h-2 rounded-full bg-yellow-400"></div>
         <span>checking…</span>
       </div>
-      <button onclick="openStats()" class="px-3 py-1.5 bg-jwblueDark hover:bg-blue-900 rounded text-xs">Stats</button>
+      <button onclick="toggleTheme()" id="theme-btn" class="px-2 py-1 bg-ink-700 hover:bg-ink-600 rounded text-xs">🌙 Dark</button>
+      <button onclick="openStats()" class="px-3 py-1.5 bg-jwblue hover:bg-jwblueDark rounded text-xs">Stats</button>
     </div>
   </div>
 </header>
@@ -74,49 +92,48 @@ tailwind.config = {
 <div class="flex-1 flex overflow-hidden">
 
   <!-- Sidebar: sessions + publications -->
-  <aside class="w-64 bg-white border-r flex-none flex flex-col">
-    <div class="p-3 border-b">
+  <aside class="w-64 bg-ink-800 border-r border-ink-700 flex-none flex flex-col">
+    <div class="p-3 border-b border-ink-700">
       <button onclick="newSession()" class="w-full px-3 py-2 bg-jwblue hover:bg-jwblueDark text-white rounded text-sm font-medium">+ New conversation</button>
     </div>
-    <div class="flex-1 overflow-y-auto">
-      <div class="p-3 border-b">
-        <h3 class="text-xs font-semibold text-slate-500 uppercase mb-2">Recent conversations</h3>
+    <div class="flex-1 overflow-y-auto chat-scroll">
+      <div class="p-3 border-b border-ink-700">
+        <h3 class="text-xs font-semibold text-ink-400 uppercase mb-2">Recent conversations</h3>
         <ul id="session-list" class="space-y-1 text-sm"></ul>
       </div>
       <div class="p-3">
-        <h3 class="text-xs font-semibold text-slate-500 uppercase mb-2">Quick ingest</h3>
+        <h3 class="text-xs font-semibold text-ink-400 uppercase mb-2">Quick ingest</h3>
         <div class="space-y-1">
-          <button onclick="quickIngest('w','19800101')" class="block w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-xs">Watchtower 1980-01</button>
-          <button onclick="quickIngest('w','20240100')" class="block w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-xs">Watchtower 2024-01</button>
-          <button onclick="quickIngest('mwb','20240100')" class="block w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-xs">Meeting Workbook 2024-01</button>
-          <button onclick="quickIngest('bh',null)" class="block w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-xs">Bible Teach book</button>
-          <button onclick="quickIngest('nwt',null)" class="block w-full text-left px-2 py-1 hover:bg-slate-100 rounded text-xs">New World Translation</button>
+          <button onclick="quickIngest('w','19800101')" class="block w-full text-left px-2 py-1 hover:bg-ink-700 rounded text-xs">Watchtower 1980-01</button>
+          <button onclick="quickIngest('w','20240100')" class="block w-full text-left px-2 py-1 hover:bg-ink-700 rounded text-xs">Watchtower 2024-01</button>
+          <button onclick="quickIngest('mwb','20240100')" class="block w-full text-left px-2 py-1 hover:bg-ink-700 rounded text-xs">Meeting Workbook 2024-01</button>
+          <button onclick="quickIngest('bh',null)" class="block w-full text-left px-2 py-1 hover:bg-ink-700 rounded text-xs">Bible Teach book</button>
+          <button onclick="quickIngest('nwt',null)" class="block w-full text-left px-2 py-1 hover:bg-ink-700 rounded text-xs">New World Translation</button>
         </div>
-        <button onclick="openPublications()" class="mt-3 w-full px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs">View all publications →</button>
+        <button onclick="openPublications()" class="mt-3 w-full px-2 py-1 bg-ink-700 hover:bg-ink-600 rounded text-xs">View all publications →</button>
       </div>
     </div>
   </aside>
 
   <!-- Main chat -->
-  <main class="flex-1 flex flex-col bg-slate-50">
+  <main class="flex-1 flex flex-col bg-ink-900">
     <div id="chat-container" class="flex-1 overflow-y-auto chat-scroll">
       <div id="messages" class="max-w-3xl mx-auto p-6 space-y-6">
-        <!-- Welcome message -->
         <div class="text-center py-12">
           <div class="w-16 h-16 bg-jwblue text-white rounded-2xl mx-auto flex items-center justify-center text-2xl font-bold mb-4">?</div>
-          <h2 class="text-xl font-semibold text-slate-700 mb-2">Ask anything about JW publications</h2>
-          <p class="text-slate-500 text-sm max-w-md mx-auto">The assistant searches the local archive (Watchtower, Awake!, books, Bibles, Kingdom Ministry 1950–2026) and answers with citations.</p>
+          <h2 class="text-xl font-semibold text-ink-100 mb-2">Ask anything about JW publications</h2>
+          <p class="text-ink-400 text-sm max-w-md mx-auto">The assistant searches the local archive (Watchtower, Awake!, books, Bibles, Kingdom Ministry 1950–2026) and answers with citations, leveraging a knowledge graph for multi-hop reasoning.</p>
           <div class="mt-6 grid grid-cols-2 gap-3 max-w-xl mx-auto text-left">
-            <button onclick="exampleQ('What does the Bible say about hope?')" class="px-3 py-2 bg-white border rounded-lg text-sm hover:bg-slate-100">
+            <button onclick="exampleQ('What does the Bible say about hope?')" class="px-3 py-2 bg-ink-800 border border-ink-700 rounded-lg text-sm hover:bg-ink-700">
               <span class="text-jwblue font-medium">Try:</span> What does the Bible say about hope?
             </button>
-            <button onclick="exampleQ('How did the Pope visit the UN in 1979 affect religious dialogue?')" class="px-3 py-2 bg-white border rounded-lg text-sm hover:bg-slate-100">
+            <button onclick="exampleQ('How did the Pope visit the UN in 1979 affect religious dialogue?')" class="px-3 py-2 bg-ink-800 border border-ink-700 rounded-lg text-sm hover:bg-ink-700">
               <span class="text-jwblue font-medium">Try:</span> Pope's 1979 UN visit
             </button>
-            <button onclick="exampleQ('What is the Kingdom Ministry?')" class="px-3 py-2 bg-white border rounded-lg text-sm hover:bg-slate-100">
-              <span class="text-jwblue font-medium">Try:</span> What is the Kingdom Ministry?
+            <button onclick="exampleQ('What is the Kingdom of God?')" class="px-3 py-2 bg-ink-800 border border-ink-700 rounded-lg text-sm hover:bg-ink-700">
+              <span class="text-jwblue font-medium">Try:</span> What is the Kingdom of God?
             </button>
-            <button onclick="exampleQ('Summarize the book What Does the Bible Really Teach')" class="px-3 py-2 bg-white border rounded-lg text-sm hover:bg-slate-100">
+            <button onclick="exampleQ('Summarize the book What Does the Bible Really Teach')" class="px-3 py-2 bg-ink-800 border border-ink-700 rounded-lg text-sm hover:bg-ink-700">
               <span class="text-jwblue font-medium">Try:</span> Summarize the Bible Teach book
             </button>
           </div>
@@ -125,12 +142,12 @@ tailwind.config = {
     </div>
 
     <!-- Composer -->
-    <div class="flex-none bg-white border-t">
+    <div class="flex-none bg-ink-800 border-t border-ink-700">
       <div class="max-w-3xl mx-auto p-4">
         <form onsubmit="sendMessage(event)" class="flex gap-2">
           <input id="input" type="text" placeholder="Ask a question…" autocomplete="off"
-            class="flex-1 px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-jwblue text-sm">
-          <select id="pub-filter" class="px-2 py-2 border border-slate-300 rounded-lg text-xs bg-white">
+            class="flex-1 px-4 py-3 bg-ink-900 border border-ink-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-jwblue text-sm">
+          <select id="pub-filter" class="px-2 py-2 bg-ink-900 border border-ink-700 rounded-lg text-xs">
             <option value="">All sources</option>
             <option value="w">Watchtower Study</option>
             <option value="wp">Watchtower Public</option>
@@ -141,79 +158,107 @@ tailwind.config = {
             <option value="nwt">NWT Bible</option>
             <option value="it">Insight</option>
           </select>
+          <select id="mode-filter" class="px-2 py-2 bg-ink-900 border border-ink-700 rounded-lg text-xs">
+            <option value="hybrid">Hybrid</option>
+            <option value="local">Local (graph)</option>
+            <option value="global">Global (communities)</option>
+          </select>
           <button type="submit" id="send-btn" class="px-5 py-3 bg-jwblue hover:bg-jwblueDark text-white rounded-lg text-sm font-medium disabled:opacity-50">
             Send
           </button>
         </form>
-        <p class="text-xs text-slate-400 mt-2 text-center">Answers come from the local archive only. Citations [1] [2] etc. reference the sources panel.</p>
+        <p class="text-xs text-ink-400 mt-2 text-center">Answers come from the local archive only. Citations [1] [2] etc. reference the sources panel.</p>
       </div>
     </div>
   </main>
 
   <!-- Right sidebar: sources + graph -->
-  <aside class="w-96 bg-white border-l flex-none flex flex-col">
-    <div class="border-b">
+  <aside class="w-96 bg-ink-800 border-l border-ink-700 flex-none flex flex-col">
+    <div class="border-b border-ink-700">
       <div class="flex">
         <button id="tab-sources" onclick="showTab('sources')" class="flex-1 px-3 py-2 text-sm font-medium text-jwblue border-b-2 border-jwblue">Sources</button>
-        <button id="tab-graph" onclick="showTab('graph')" class="flex-1 px-3 py-2 text-sm text-slate-500 border-b-2 hover:text-slate-700">Graph</button>
-        <button id="tab-communities" onclick="showTab('communities')" class="flex-1 px-3 py-2 text-sm text-slate-500 border-b-2 hover:text-slate-700">Communities</button>
+        <button id="tab-graph" onclick="showTab('graph')" class="flex-1 px-3 py-2 text-sm text-ink-400 border-b-2 border-transparent hover:text-ink-100">Graph</button>
+        <button id="tab-communities" onclick="showTab('communities')" class="flex-1 px-3 py-2 text-sm text-ink-400 border-b-2 border-transparent hover:text-ink-100">Communities</button>
       </div>
     </div>
 
     <!-- Sources tab -->
     <div id="sources-panel" class="flex-1 overflow-y-auto chat-scroll p-3 space-y-2 text-sm">
-      <p class="text-slate-400 text-xs italic">Sources will appear here as the assistant answers.</p>
+      <p class="text-ink-400 text-xs italic">Sources will appear here as the assistant answers.</p>
     </div>
 
     <!-- Graph tab -->
     <div id="graph-panel" class="hidden flex-1 overflow-y-auto chat-scroll p-3">
       <div class="mb-3">
-        <input id="entity-search" type="text" placeholder="Search entities…" class="w-full px-2 py-1 border rounded text-xs"
+        <input id="entity-search" type="text" placeholder="Search entities…" class="w-full px-2 py-1 bg-ink-900 border border-ink-700 rounded text-xs"
                oninput="searchEntities(this.value)">
       </div>
-      <svg id="graph-svg" width="100%" height="400" class="border rounded bg-slate-50"></svg>
-      <div id="graph-legend" class="text-xs text-slate-500 mt-2"></div>
+      <svg id="graph-svg" width="100%" height="400" class="border border-ink-700 rounded bg-ink-900"></svg>
+      <div id="graph-legend" class="text-xs text-ink-400 mt-2"></div>
       <div id="entity-list" class="mt-3 space-y-1"></div>
     </div>
 
     <!-- Communities tab -->
     <div id="communities-panel" class="hidden flex-1 overflow-y-auto chat-scroll p-3 space-y-2 text-sm">
-      <p class="text-slate-400 text-xs italic">Communities (auto-detected themes) appear here after GraphRAG ingestion.</p>
+      <p class="text-ink-400 text-xs italic">Communities (auto-detected themes) appear here after GraphRAG ingestion.</p>
     </div>
   </aside>
 
 </div>
 
 <!-- Stats modal -->
-<div id="stats-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-  <div class="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto">
-    <div class="p-4 border-b flex justify-between items-center">
+<div id="stats-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+  <div class="bg-ink-800 border border-ink-700 rounded-lg max-w-2xl w-full max-h-[80vh] overflow-y-auto chat-scroll">
+    <div class="p-4 border-b border-ink-700 flex justify-between items-center">
       <h2 class="text-lg font-semibold">Corpus statistics</h2>
-      <button onclick="closeStats()" class="text-slate-400 hover:text-slate-700">✕</button>
+      <button onclick="closeStats()" class="text-ink-400 hover:text-ink-100">✕</button>
     </div>
     <div id="stats-content" class="p-4"></div>
   </div>
 </div>
 
 <!-- Publications modal -->
-<div id="pubs-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-  <div class="bg-white rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto">
-    <div class="p-4 border-b flex justify-between items-center">
+<div id="pubs-modal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+  <div class="bg-ink-800 border border-ink-700 rounded-lg max-w-4xl w-full max-h-[80vh] overflow-y-auto chat-scroll">
+    <div class="p-4 border-b border-ink-700 flex justify-between items-center">
       <h2 class="text-lg font-semibold">Ingested publications</h2>
-      <button onclick="closePublications()" class="text-slate-400 hover:text-slate-700">✕</button>
+      <button onclick="closePublications()" class="text-ink-400 hover:text-ink-100">✕</button>
     </div>
     <div id="pubs-content" class="p-4"></div>
   </div>
 </div>
 
 <!-- Ingest status toast -->
-<div id="toast" class="hidden fixed bottom-6 right-6 bg-jwblueDark text-white px-4 py-3 rounded-lg shadow-lg text-sm max-w-sm z-50"></div>
+<div id="toast" class="hidden fixed bottom-6 right-6 bg-ink-700 border border-ink-600 text-ink-100 px-4 py-3 rounded-lg shadow-lg text-sm max-w-md z-50"></div>
 
 <script>
 // ====== State ======
 let currentSessionUid = null;
 let isStreaming = false;
 let pendingSources = [];
+let ingestEventSource = null;
+
+// ====== Theme toggle ======
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.classList.contains('dark');
+  if (isDark) {
+    html.classList.remove('dark');
+    document.getElementById('theme-btn').textContent = '☀ Light';
+  } else {
+    html.classList.add('dark');
+    document.getElementById('theme-btn').textContent = '🌙 Dark';
+  }
+  localStorage.setItem('jw-theme', isDark ? 'light' : 'dark');
+}
+// Load saved theme
+(function() {
+  const saved = localStorage.getItem('jw-theme');
+  if (saved === 'light') {
+    document.documentElement.classList.remove('dark');
+    document.getElementById('theme-btn').textContent = '☀ Light';
+  }
+})();
 
 // ====== API helpers ======
 async function api(path, opts = {}) {
@@ -221,7 +266,6 @@ async function api(path, opts = {}) {
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return r;
 }
-
 async function apiJSON(path, opts = {}) {
   const r = await api(path, opts);
   return r.json();
@@ -233,7 +277,8 @@ async function checkHealth() {
     const h = await apiJSON('/health');
     const el = document.getElementById('ollama-status');
     if (h.ollama_ready) {
-      el.innerHTML = `<div class="w-2 h-2 rounded-full bg-green-400"></div><span>Ollama ready (${h.llm_model})</span>`;
+      const modelCount = h.ollama_models ? h.ollama_models.length : 0;
+      el.innerHTML = `<div class="w-2 h-2 rounded-full bg-green-400"></div><span>Ollama ready (${h.llm_model}, ${modelCount} models)</span>`;
     } else {
       el.innerHTML = `<div class="w-2 h-2 rounded-full bg-red-400"></div><span>Ollama not ready</span>`;
     }
@@ -255,11 +300,11 @@ async function newSession() {
   document.getElementById('messages').innerHTML = `
     <div class="text-center py-12">
       <div class="w-16 h-16 bg-jwblue text-white rounded-2xl mx-auto flex items-center justify-center text-2xl font-bold mb-4">?</div>
-      <h2 class="text-xl font-semibold text-slate-700 mb-2">New conversation</h2>
-      <p class="text-slate-500 text-sm">Ask your first question below.</p>
+      <h2 class="text-xl font-semibold text-ink-100 mb-2">New conversation</h2>
+      <p class="text-ink-400 text-sm">Ask your first question below.</p>
     </div>
   `;
-  document.getElementById('sources-panel').innerHTML = `<p class="text-slate-400 text-xs italic">Sources will appear here as the assistant answers.</p>`;
+  document.getElementById('sources-panel').innerHTML = `<p class="text-ink-400 text-xs italic">Sources will appear here as the assistant answers.</p>`;
   loadSessions();
 }
 
@@ -268,14 +313,14 @@ async function loadSessions() {
     const sessions = await apiJSON('/sessions');
     const list = document.getElementById('session-list');
     if (sessions.length === 0) {
-      list.innerHTML = `<li class="text-xs text-slate-400 italic">No conversations yet</li>`;
+      list.innerHTML = `<li class="text-xs text-ink-400 italic">No conversations yet</li>`;
       return;
     }
     list.innerHTML = sessions.map(s => `
       <li>
-        <button onclick="loadSession('${s.session_uid}')" class="block w-full text-left px-2 py-1.5 hover:bg-slate-100 rounded text-xs ${s.session_uid === currentSessionUid ? 'bg-blue-50 text-jwblue font-medium' : 'text-slate-700'}">
+        <button onclick="loadSession('${s.session_uid}')" class="block w-full text-left px-2 py-1.5 hover:bg-ink-700 rounded text-xs ${s.session_uid === currentSessionUid ? 'bg-blue-900 text-jwblue font-medium' : 'text-ink-200'}">
           ${s.title || 'Conversation ' + s.session_uid.slice(0,8)}
-          <span class="block text-slate-400 text-[10px]">${new Date(s.last_active).toLocaleDateString()}</span>
+          <span class="block text-ink-400 text-[10px]">${new Date(s.last_active).toLocaleDateString()}</span>
         </button>
       </li>
     `).join('');
@@ -302,8 +347,7 @@ function renderMessage(role, content, citations = []) {
   const bubble = document.createElement('div');
   bubble.className = role === 'user'
     ? 'bg-jwblue text-white rounded-2xl rounded-tr-sm px-4 py-3 max-w-[80%] text-sm'
-    : 'bg-white border rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] text-sm prose prose-sm';
-  // Convert [1] [2] to clickable chips
+    : 'bg-ink-800 border border-ink-700 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] text-sm';
   let html = content.replace(/\[(\d+)\]/g, (m, n) => `<span class="citation-chip" onclick="highlightSource(${n})">${n}</span>`);
   bubble.innerHTML = html;
   wrapper.appendChild(bubble);
@@ -317,7 +361,7 @@ function renderStreamingMessage() {
   const wrapper = document.createElement('div');
   wrapper.className = 'flex justify-start';
   const bubble = document.createElement('div');
-  bubble.className = 'bg-white border rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] text-sm streaming-cursor';
+  bubble.className = 'bg-ink-800 border border-ink-700 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] text-sm streaming-cursor';
   bubble.id = 'streaming-bubble';
   bubble.innerHTML = '';
   wrapper.appendChild(bubble);
@@ -338,12 +382,13 @@ async function sendMessage(e) {
   isStreaming = true;
   document.getElementById('send-btn').disabled = true;
   pendingSources = [];
-  document.getElementById('sources-panel').innerHTML = `<p class="text-slate-400 text-xs italic">Searching…</p>`;
+  document.getElementById('sources-panel').innerHTML = `<p class="text-ink-400 text-xs italic">Searching…</p>`;
 
   const bubble = renderStreamingMessage();
 
   try {
     const pubFilter = document.getElementById('pub-filter').value || null;
+    const mode = document.getElementById('mode-filter').value || 'hybrid';
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
@@ -351,7 +396,8 @@ async function sendMessage(e) {
         question: text,
         session_uid: currentSessionUid,
         pub_filter: pubFilter,
-        top_k: 8,
+        mode: mode,
+        top_k: 6,
       }),
     });
 
@@ -386,7 +432,7 @@ async function sendMessage(e) {
       }
     }
   } catch (e) {
-    bubble.innerHTML = `<span class="text-red-600">Error: ${e.message}</span>`;
+    bubble.innerHTML = `<span class="text-red-400">Error: ${e.message}</span>`;
   } finally {
     isStreaming = false;
     document.getElementById('send-btn').disabled = false;
@@ -397,19 +443,20 @@ async function sendMessage(e) {
 function renderSources(sources) {
   const panel = document.getElementById('sources-panel');
   if (!sources || sources.length === 0) {
-    panel.innerHTML = `<p class="text-slate-400 text-xs italic">No sources found.</p>`;
+    panel.innerHTML = `<p class="text-ink-400 text-xs italic">No sources found.</p>`;
     return;
   }
   panel.innerHTML = sources.map(s => `
-    <div class="border rounded p-2 hover:bg-blue-50 cursor-pointer" id="source-${s.index}" onclick="showSourceDetail(${s.index})">
+    <div class="border border-ink-700 rounded p-2 hover:bg-ink-700 cursor-pointer" id="source-${s.index}" onclick="showSourceDetail(${s.index})">
       <div class="flex items-center justify-between mb-1">
         <span class="citation-chip">[${s.index}]</span>
-        <span class="text-[10px] text-slate-400">dist ${(s.distance||0).toFixed(3)}</span>
+        <span class="text-[10px] text-ink-400">dist ${(s.distance||0).toFixed(3)}</span>
       </div>
-      <div class="text-xs font-medium text-slate-700">${s.pub_code || '?'} ${s.issue || ''} ${s.year || ''}</div>
-      ${s.doc_title ? `<div class="text-xs text-slate-600">${s.doc_title}</div>` : ''}
-      ${s.page_numbers && s.page_numbers.length ? `<div class="text-[10px] text-slate-400">pages ${s.page_numbers.join(',')}</div>` : ''}
-      <div class="text-xs text-slate-500 mt-1 line-clamp-3">${(s.snippet||'').replace(/</g, '&lt;')}</div>
+      <div class="text-xs font-medium text-ink-100">${s.pub_code || '?'} ${s.issue || ''} ${s.year || ''}</div>
+      ${s.doc_title ? `<div class="text-xs text-ink-200">${s.doc_title}</div>` : ''}
+      ${s.page_numbers && s.page_numbers.length ? `<div class="text-[10px] text-ink-400">pages ${s.page_numbers.join(',')}</div>` : ''}
+      ${s.matched_entities && s.matched_entities.length ? `<div class="text-[10px] text-blue-300 mt-1">⬇ ${s.matched_entities.slice(0,3).join(', ')}</div>` : ''}
+      <div class="text-xs text-ink-300 mt-1 line-clamp-3">${(s.snippet||'').replace(/</g, '&lt;')}</div>
     </div>
   `).join('');
 }
@@ -418,8 +465,8 @@ function highlightSource(n) {
   const el = document.getElementById(`source-${n}`);
   if (el) {
     el.scrollIntoView({behavior: 'smooth', block: 'center'});
-    el.classList.add('bg-yellow-100');
-    setTimeout(() => el.classList.remove('bg-yellow-100'), 1500);
+    el.classList.add('bg-yellow-900');
+    setTimeout(() => el.classList.remove('bg-yellow-900'), 1500);
   }
 }
 
@@ -434,7 +481,7 @@ function exampleQ(q) {
   document.getElementById('input').focus();
 }
 
-// ===== Graph tab =====
+// ====== Graph tab ======
 function showTab(name) {
   ['sources', 'graph', 'communities'].forEach(t => {
     const panel = document.getElementById(t + '-panel');
@@ -442,11 +489,11 @@ function showTab(name) {
     if (t === name) {
       panel.classList.remove('hidden');
       tab.classList.add('text-jwblue', 'border-jwblue');
-      tab.classList.remove('text-slate-500');
+      tab.classList.remove('text-ink-400', 'border-transparent');
     } else {
       panel.classList.add('hidden');
       tab.classList.remove('text-jwblue', 'border-jwblue');
-      tab.classList.add('text-slate-500');
+      tab.classList.add('text-ink-400', 'border-transparent');
     }
   });
   if (name === 'graph') loadGraph();
@@ -459,7 +506,7 @@ async function loadGraph(entityId = null) {
     const data = await apiJSON(url);
     renderGraph(data);
   } catch (e) {
-    document.getElementById('entity-list').innerHTML = `<p class="text-red-600 text-xs">Error: ${e.message}</p>`;
+    document.getElementById('entity-list').innerHTML = `<p class="text-red-400 text-xs">Error: ${e.message}</p>`;
   }
 }
 
@@ -473,61 +520,50 @@ function renderGraph(data) {
 
   const W = svg.clientWidth || 360;
   const H = 400;
-
-  // Color by type
   const typeColors = {
-    person: '#3b82f6', deity: '#d4a843', place: '#10b981',
-    concept: '#8b5cf6', organization: '#ef4444', doctrine: '#ec4899',
-    book: '#06b6d4', event: '#f97316', object: '#6b7280'
+    person: '#3b82f6', deity: '#fbbf24', place: '#10b981',
+    concept: '#a855f7', organization: '#ef4444', doctrine: '#ec4899',
+    book: '#06b6d4', event: '#f97316', object: '#94a3b8'
   };
 
-  // Place entities in a circle (simple layout)
   const cx = W / 2, cy = H / 2;
   const radius = Math.min(W, H) / 2 - 30;
   const positions = entities.map((e, i) => {
     const angle = (i / entities.length) * 2 * Math.PI;
     return {x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle), entity: e};
   });
-
-  // Build name -> position map
   const posById = {};
   positions.forEach(p => { posById[p.entity.id] = p; });
 
-  // Draw edges
   let svgHtml = '';
   relationships.forEach(r => {
     const s = posById[r.source_id];
     const t = posById[r.target_id];
     if (!s || !t) return;
     const w = Math.min(3, 0.5 + r.weight / 2);
-    svgHtml += `<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="#cbd5e1" stroke-width="${w}" />`;
+    svgHtml += `<line x1="${s.x}" y1="${s.y}" x2="${t.x}" y2="${t.y}" stroke="#475569" stroke-width="${w}" />`;
   });
-
-  // Draw nodes
   positions.forEach(p => {
     const e = p.entity;
-    const color = typeColors[e.type] || '#6b7280';
+    const color = typeColors[e.type] || '#94a3b8';
     const r = 5 + Math.min(15, (e.chunk_count || 1) / 5);
-    svgHtml += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${color}" stroke="white" stroke-width="2" cursor="pointer" onclick="loadGraph(${e.id})"><title>${e.name_original || e.name} (${e.type})\n${e.description || ''}\n${e.chunk_count} chunks</title></circle>`;
-    svgHtml += `<text x="${p.x}" y="${p.y + r + 10}" text-anchor="middle" font-size="9" fill="#475569">${(e.name_original || e.name).slice(0, 16)}</text>`;
+    svgHtml += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${color}" stroke="#0f172a" stroke-width="2" cursor="pointer" onclick="loadGraph(${e.id})"><title>${e.name_original || e.name} (${e.type})\n${e.description || ''}\n${e.chunk_count} chunks</title></circle>`;
+    svgHtml += `<text x="${p.x}" y="${p.y + r + 10}" text-anchor="middle" font-size="9" fill="#cbd5e1">${(e.name_original || e.name).slice(0, 16)}</text>`;
   });
-
   svg.innerHTML = svgHtml;
 
-  // Render entity list
   const list = document.getElementById('entity-list');
   list.innerHTML = entities.slice(0, 30).map(e => `
-    <div class="border rounded p-2 hover:bg-slate-50 cursor-pointer" onclick="loadGraph(${e.id})">
+    <div class="border border-ink-700 rounded p-2 hover:bg-ink-700 cursor-pointer" onclick="loadGraph(${e.id})">
       <div class="flex justify-between items-center">
-        <span class="font-medium text-xs" style="color: ${typeColors[e.type] || '#6b7280'}">${e.name_original || e.name}</span>
-        <span class="text-[10px] text-slate-400">${e.type}</span>
+        <span class="font-medium text-xs" style="color: ${typeColors[e.type] || '#94a3b8'}">${e.name_original || e.name}</span>
+        <span class="text-[10px] text-ink-400">${e.type}</span>
       </div>
-      ${e.description ? `<div class="text-[11px] text-slate-500 mt-1">${e.description.slice(0, 100)}</div>` : ''}
-      <div class="text-[10px] text-slate-400 mt-1">${e.chunk_count || 0} chunks ${e.community_id ? '• community #' + e.community_id : ''}</div>
+      ${e.description ? `<div class="text-[11px] text-ink-300 mt-1">${e.description.slice(0, 100)}</div>` : ''}
+      <div class="text-[10px] text-ink-400 mt-1">${e.chunk_count || 0} chunks ${e.community_id ? '• community #' + e.community_id : ''}</div>
     </div>
   `).join('');
 
-  // Legend
   const legend = document.getElementById('graph-legend');
   legend.innerHTML = `<span class="font-medium">Colors:</span> ` +
     Object.entries(typeColors).map(([t, c]) => `<span class="inline-block ml-2"><span class="inline-block w-2 h-2 rounded-full mr-1" style="background:${c}"></span>${t}</span>`).join('');
@@ -539,12 +575,12 @@ async function searchEntities(q) {
     const data = await apiJSON(`/entities/search?q=${encodeURIComponent(q)}&top_k=20`);
     const list = document.getElementById('entity-list');
     list.innerHTML = data.entities.map(e => `
-      <div class="border rounded p-2 hover:bg-slate-50 cursor-pointer" onclick="loadGraph(${e.id})">
+      <div class="border border-ink-700 rounded p-2 hover:bg-ink-700 cursor-pointer" onclick="loadGraph(${e.id})">
         <div class="flex justify-between items-center">
           <span class="font-medium text-xs">${e.name_original || e.name}</span>
-          <span class="text-[10px] text-slate-400">${e.type} • dist ${(e.distance||0).toFixed(2)}</span>
+          <span class="text-[10px] text-ink-400">${e.type} • dist ${(e.distance||0).toFixed(2)}</span>
         </div>
-        ${e.description ? `<div class="text-[11px] text-slate-500 mt-1">${e.description.slice(0, 120)}</div>` : ''}
+        ${e.description ? `<div class="text-[11px] text-ink-300 mt-1">${e.description.slice(0, 120)}</div>` : ''}
       </div>
     `).join('');
   } catch (e) {}
@@ -555,21 +591,21 @@ async function loadCommunities() {
     const data = await apiJSON('/communities');
     const panel = document.getElementById('communities-panel');
     if (!data || data.length === 0) {
-      panel.innerHTML = `<p class="text-slate-400 text-xs italic">No communities yet. Run "Build communities" via ingest.</p>`;
+      panel.innerHTML = `<p class="text-ink-400 text-xs italic">No communities yet. Run: docker compose run --rm ingest python build_graph.py --communities</p>`;
       return;
     }
     panel.innerHTML = data.map(c => `
-      <div class="border rounded p-3">
+      <div class="border border-ink-700 rounded p-3">
         <div class="flex justify-between items-start mb-1">
-          <span class="font-medium text-sm">${c.title || '(untitled)'}</span>
-          <span class="text-[10px] text-slate-400">#${c.id}</span>
+          <span class="font-medium text-sm text-ink-100">${c.title || '(untitled)'}</span>
+          <span class="text-[10px] text-ink-400">#${c.id}</span>
         </div>
-        ${c.summary ? `<p class="text-xs text-slate-700">${c.summary}</p>` : ''}
-        <div class="text-[10px] text-slate-400 mt-1">${c.entity_count} entities • ${c.chunk_count} chunks • level ${c.level}</div>
+        ${c.summary ? `<p class="text-xs text-ink-200">${c.summary}</p>` : ''}
+        <div class="text-[10px] text-ink-400 mt-1">${c.entity_count} entities • ${c.chunk_count} chunks • level ${c.level}</div>
       </div>
     `).join('');
   } catch (e) {
-    document.getElementById('communities-panel').innerHTML = `<p class="text-red-600 text-xs">Error: ${e.message}</p>`;
+    document.getElementById('communities-panel').innerHTML = `<p class="text-red-400 text-xs">Error: ${e.message}</p>`;
   }
 }
 
@@ -577,37 +613,49 @@ async function loadCommunities() {
 async function openStats() {
   const modal = document.getElementById('stats-modal');
   const content = document.getElementById('stats-content');
-  content.innerHTML = `<p class="text-slate-500 text-sm">Loading…</p>`;
+  content.innerHTML = `<p class="text-ink-400 text-sm">Loading…</p>`;
   modal.classList.remove('hidden');
   try {
     const s = await apiJSON('/stats');
     content.innerHTML = `
       <div class="grid grid-cols-3 gap-3 mb-4">
-        <div class="bg-slate-100 rounded p-3 text-center">
+        <div class="bg-ink-900 border border-ink-700 rounded p-3 text-center">
           <div class="text-2xl font-bold text-jwblue">${s.publications}</div>
-          <div class="text-xs text-slate-600">Publications</div>
+          <div class="text-xs text-ink-400">Publications</div>
         </div>
-        <div class="bg-slate-100 rounded p-3 text-center">
+        <div class="bg-ink-900 border border-ink-700 rounded p-3 text-center">
           <div class="text-2xl font-bold text-jwblue">${s.documents}</div>
-          <div class="text-xs text-slate-600">Documents</div>
+          <div class="text-xs text-ink-400">Documents</div>
         </div>
-        <div class="bg-slate-100 rounded p-3 text-center">
+        <div class="bg-ink-900 border border-ink-700 rounded p-3 text-center">
           <div class="text-2xl font-bold text-jwblue">${s.chunks.toLocaleString()}</div>
-          <div class="text-xs text-slate-600">Chunks</div>
+          <div class="text-xs text-ink-400">Chunks</div>
+        </div>
+        <div class="bg-ink-900 border border-ink-700 rounded p-3 text-center">
+          <div class="text-2xl font-bold text-jwgold">${s.entities}</div>
+          <div class="text-xs text-ink-400">Entities</div>
+        </div>
+        <div class="bg-ink-900 border border-ink-700 rounded p-3 text-center">
+          <div class="text-2xl font-bold text-jwgold">${s.relationships}</div>
+          <div class="text-xs text-ink-400">Relationships</div>
+        </div>
+        <div class="bg-ink-900 border border-ink-700 rounded p-3 text-center">
+          <div class="text-2xl font-bold text-jwgold">${s.communities}</div>
+          <div class="text-xs text-ink-400">Communities</div>
         </div>
       </div>
-      <h3 class="font-semibold text-sm mb-2">By type</h3>
+      <h3 class="font-semibold text-sm mb-2 text-ink-100">By type</h3>
       <table class="w-full text-sm mb-4">
-        <tr class="text-xs text-slate-500"><th class="text-left">Type</th><th class="text-right">Pubs</th><th class="text-right">Chunks</th></tr>
-        ${s.by_type.map(t => `<tr><td>${t.pub_type||'-'}</td><td class="text-right">${t.c}</td><td class="text-right">${t.chunks||0}</td></tr>`).join('')}
+        <tr class="text-xs text-ink-400"><th class="text-left">Type</th><th class="text-right">Pubs</th><th class="text-right">Chunks</th><th class="text-right">Entities</th></tr>
+        ${s.by_type.map(t => `<tr class="border-t border-ink-700"><td class="py-1">${t.pub_type||'-'}</td><td class="text-right">${t.c}</td><td class="text-right">${t.chunks||0}</td><td class="text-right">${t.entities||0}</td></tr>`).join('')}
       </table>
-      <h3 class="font-semibold text-sm mb-2">By year (top 20)</h3>
+      <h3 class="font-semibold text-sm mb-2 text-ink-100">By year (last 20)</h3>
       <div class="flex flex-wrap gap-1 text-xs">
-        ${s.by_year.slice(-20).map(y => `<span class="px-2 py-1 bg-slate-100 rounded">${y.year}: ${y.chunks} chunks</span>`).join('')}
+        ${s.by_year.slice(-20).map(y => `<span class="px-2 py-1 bg-ink-900 border border-ink-700 rounded">${y.year}: ${y.chunks} chunks</span>`).join('')}
       </div>
     `;
   } catch (e) {
-    content.innerHTML = `<p class="text-red-600 text-sm">Error: ${e.message}</p>`;
+    content.innerHTML = `<p class="text-red-400 text-sm">Error: ${e.message}</p>`;
   }
 }
 
@@ -616,57 +664,111 @@ function closeStats() { document.getElementById('stats-modal').classList.add('hi
 async function openPublications() {
   const modal = document.getElementById('pubs-modal');
   const content = document.getElementById('pubs-content');
-  content.innerHTML = `<p class="text-slate-500 text-sm">Loading…</p>`;
+  content.innerHTML = `<p class="text-ink-400 text-sm">Loading…</p>`;
   modal.classList.remove('hidden');
   try {
     const pubs = await apiJSON('/publications');
     if (pubs.length === 0) {
-      content.innerHTML = `<p class="text-slate-500 text-sm">No publications ingested yet. Use the "Quick ingest" buttons on the left.</p>`;
+      content.innerHTML = `<p class="text-ink-400 text-sm">No publications ingested yet. Use the "Quick ingest" buttons on the left.</p>`;
       return;
     }
     content.innerHTML = `
       <table class="w-full text-sm">
-        <thead><tr class="text-xs text-slate-500 border-b">
+        <thead><tr class="text-xs text-ink-400 border-b border-ink-700">
           <th class="text-left p-2">Code</th><th class="text-left p-2">Issue</th><th class="text-left p-2">Year</th>
-          <th class="text-left p-2">Title</th><th class="text-right p-2">Chunks</th><th class="text-left p-2">Ingested</th>
+          <th class="text-left p-2">Title</th><th class="text-right p-2">Chunks</th><th class="text-right p-2">Entities</th><th class="text-left p-2">Ingested</th>
         </tr></thead>
         <tbody>
-          ${pubs.map(p => `<tr class="border-b hover:bg-slate-50">
-            <td class="p-2 font-mono">${p.pub_code}</td>
+          ${pubs.map(p => `<tr class="border-b border-ink-700 hover:bg-ink-700">
+            <td class="p-2 font-mono text-jwblue">${p.pub_code}</td>
             <td class="p-2">${p.issue || '-'}</td>
             <td class="p-2">${p.year || '-'}</td>
-            <td class="p-2 text-xs">${(p.title||'').slice(0,60)}</td>
+            <td class="p-2 text-xs">${(p.title||'').slice(0,50)}</td>
             <td class="p-2 text-right">${p.chunk_count}</td>
-            <td class="p-2 text-xs text-slate-500">${new Date(p.ingested_at).toLocaleString()}</td>
+            <td class="p-2 text-right">${p.entity_count || 0}</td>
+            <td class="p-2 text-xs text-ink-400">${new Date(p.ingested_at).toLocaleString()}</td>
           </tr>`).join('')}
         </tbody>
       </table>`;
   } catch (e) {
-    content.innerHTML = `<p class="text-red-600 text-sm">Error: ${e.message}</p>`;
+    content.innerHTML = `<p class="text-red-400 text-sm">Error: ${e.message}</p>`;
   }
 }
 
 function closePublications() { document.getElementById('pubs-modal').classList.add('hidden'); }
 
-// ====== Quick ingest ======
+// ====== Quick ingest (streaming SSE) ======
 async function quickIngest(pub, issue) {
   const toast = document.getElementById('toast');
   toast.classList.remove('hidden');
-  toast.textContent = `⏳ Ingesting ${pub} ${issue || ''}… this may take a few minutes (download + decrypt + embed)`;
+  toast.innerHTML = `⏳ Ingesting <b>${pub} ${issue || ''}</b>… <div id="ingest-log" class="mt-2 text-xs text-ink-300 max-h-40 overflow-y-auto chat-scroll font-mono"></div>`;
+
+  // Close any existing event source
+  if (ingestEventSource) ingestEventSource.close();
+
   try {
-    const r = await apiJSON('/ingest', {
+    const resp = await fetch('/api/ingest', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({pub_code: pub, issue: issue}),
     });
-    if (r.ok) {
-      toast.textContent = `✓ Ingest complete for ${pub} ${issue || ''}`;
-      setTimeout(() => toast.classList.add('hidden'), 4000);
-    } else {
-      toast.textContent = `✗ Failed: ${(r.stderr || r.error || '').slice(0,200)}`;
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let logLines = [];
+    let lastStatus = 'start';
+
+    while (true) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.type === 'start') {
+              logLines.push(`> ${evt.command}`);
+            } else if (evt.type === 'log') {
+              logLines.push(evt.line);
+              // Keep only last 30 lines in toast
+              if (logLines.length > 30) logLines = logLines.slice(-30);
+              const logDiv = document.getElementById('ingest-log');
+              if (logDiv) logDiv.innerHTML = logLines.join('\n').replace(/</g, '&lt;');
+              toast.scrollTop = toast.scrollHeight;
+            } else if (evt.type === 'done') {
+              lastStatus = evt.ok ? 'success' : 'failed';
+              if (evt.ok) {
+                logLines.push('✓ Ingest complete!');
+                toast.classList.add('border-green-600');
+                toast.querySelector('b').textContent = `${pub} ${issue || ''} ✓`;
+              } else {
+                logLines.push(`✗ Failed (exit code ${evt.exit_code})`);
+                toast.classList.add('border-red-600');
+              }
+              const logDiv = document.getElementById('ingest-log');
+              if (logDiv) logDiv.innerHTML = logLines.join('\n').replace(/</g, '&lt;');
+            } else if (evt.type === 'error') {
+              logLines.push(`✗ ${evt.error}`);
+              toast.classList.add('border-red-600');
+              const logDiv = document.getElementById('ingest-log');
+              if (logDiv) logDiv.innerHTML = logLines.join('\n').replace(/</g, '&lt;');
+            }
+          } catch (e) { console.error(e); }
+        }
+      }
+    }
+
+    // After 4 seconds, hide the toast if successful
+    if (lastStatus === 'success') {
+      setTimeout(() => toast.classList.add('hidden'), 8000);
+      checkHealth();  // refresh stats
     }
   } catch (e) {
-    toast.textContent = `✗ Error: ${e.message}`;
+    toast.innerHTML = `✗ Error: ${e.message}`;
+    toast.classList.add('border-red-600');
   }
 }
 
