@@ -108,7 +108,9 @@ services:
     # entirely — useful when your firewall blocks Docker bridge → host traffic.
     # When using host mode, also set OLLAMA_HOST=http://127.0.0.1:11434
     # and DATABASE_URL=postgresql://jwrag:jwrag_dev@127.0.0.1:5432/jwrag
-    network_mode: ${BACKEND_NETWORK_MODE:-bridge}
+    # NOTE: when network_mode is unset/empty, the container joins the compose
+    # project network normally (this is what we want by default).
+    ${BACKEND_NETWORK_MODE:+network_mode: host}
     ports:
       - "${BACKEND_PORT:-5000}:5000"
     volumes:
